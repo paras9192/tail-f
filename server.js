@@ -15,36 +15,52 @@ app.get('/',(req,res)=>{
 // Specify the path to your log file
 const logFilePath = './test.txt';
 
-wss.on('connection', (ws) => {
-    // Create a readline interface
-    const rl = readline.createInterface({
-      input: fs.createReadStream(logFilePath),
-      output: process.stdout,
-      terminal: false
-    });
+wss.on('connection', async(ws) => {
+//     // Create a readline interface
+//     const rl = readline.createInterface({
+//       input: fs.createReadStream(logFilePath),
+//       output: process.stdout,
+//       terminal: false
+//     });
 
 
-// Event listener for new lines in the log file
-rl.on('line', async(line) => {
-  // Process each line of the log file here
-  try{
-  
-    const data =  await tailData(logFilePath)
-    console.log(data);
+// // Event listener for new lines in the log file
+// rl.on('line', async(line) => {
+//   // Process each line of the log file here
+//     const data = line.toString();
+//     const tailData = data.split('\n').reverse().slice(0,10).reverse().join('\n');
+//     ws.send(data);
+
+// });
+
+// // Event listener for the end of the file
+// rl.on('close', () => {
+//   console.log('End of log file');
+// });
+// });
+const stream = fs.createReadStream(logFilePath);
+const rl = readline.createInterface({
+  input: stream,
+  crlfDelay: Infinity
+});
+
+let lines = [];
+for await (const line of rl) {
+  lines.push(line);
+
+  // Process a batch of lines
+  if (lines.length >= 1000) {
+    const data = lines.join('\n');
     ws.send(data);
-    console.log(line);
-
+    lines = [];
   }
-    catch(err){
-        console.log(err);
-    }
+}
 
-});
-
-// Event listener for the end of the file
-rl.on('close', () => {
-  console.log('End of log file');
-});
+// Process any remaining lines
+if (lines.length > 0) {
+  const data = lines.join('\n');
+  ws.send(data);
+}
 });
 
 app.get('/log',(req,res)=>{
@@ -56,31 +72,36 @@ server.listen(5002,()=>{
 });
 
 
-const tailData =function (input_file_path) {
+const tailData = function(input_file_path) {
     const maxLineCount = 10;
     const encoding = "utf8";
-
+  
     return new Promise((resolve, reject) => {
-      let lines = [];
+      const rl = fs.createReadStream(input_file_path, { encoding: 'utf8' });
+      const lines = [];
       let lineCount = 0;
-
-      const rl = fs
-        .createReadStream(input_file_path, { encoding: encoding })
-        .on("data", (chunk) => {
-          let chunkLines = chunk.split(/\r?\n/).reverse(); // Reverse the chunk lines to read the last lines first
-          lines = [...chunkLines, ...lines]; // Concatenate the current chunk to the previous lines
-          lineCount += chunkLines.length;
-
+  
+      rl.on('data', (chunk) => {
+        const data = chunk.toString();
+        console.log(data);
+        const chunkLines = data.split('\n').filter(Boolean);
+        for (const line of chunkLines) {
+          lines.push(line);
+          lineCount++;
           if (lineCount > maxLineCount) {
-            lines = lines.slice(0, maxLineCount); // Keep only the last 10 lines
-            lineCount = maxLineCount;
+            lines.shift();
+            lineCount--;
           }
-        })
-        .on("close", () => {
-          resolve(lines.join("\n"));
-        })
-        .on("error", (err) => {
-          reject(err);
-        });
+        }
+      });
+  
+      rl.on('end', () => {
+        console.log('End of file');
+        resolve(lines.join('\n'));
+      });
+  
+      rl.on('error', (error) => {
+        reject(error);
+      });
     });
   };
