@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Log Viewer</title>
+</head>
+<body>
+  <ul id="logList"></ul>
+
+  <script>
+    const socket = new WebSocket(`ws://localhost:5002`);
+
+    socket.onmessage = (event) => {
+      const logList = document.getElementById('logList');
+      const listItem = document.createElement('li');
+      listItem.textContent = event.data;
+      const data = JSON.parse(event.data);
+        if (data.type === 'error') {
+            listItem.style.color = 'red';
+        }   
+        
+      logList.appendChild(listItem);
+    };
+  </script>
+</body>
+</html>
