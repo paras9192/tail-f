@@ -27,10 +27,9 @@ wss.on('connection', (ws) => {
 // Event listener for new lines in the log file
 rl.on('line', async(line) => {
   // Process each line of the log file here
-  console.log(line);
   try{
   
-    const data =  await tailData(logFilePath, 1, "utf8")
+    const data =  await tailData(logFilePath)
     console.log(data);
     ws.send(data);
     console.log(line);
@@ -57,88 +56,31 @@ server.listen(5002,()=>{
 });
 
 
-const tailData =async (input_file_path, maxLineCount, encoding)=> {
-
-    const NEW_LINE_CHARACTERS = ["\n"];
-
-    if (encoding == null) {
-        encoding = "utf8";
-    }
-
-    const readPreviousChar = function( stat, file, currentCharacterCount) {
-        return fs.readFileSync(file, Buffer.alloc(1), 0, 1, stat.size - 1 - currentCharacterCount)
-            .then((bytesReadAndBuffer) => {
-                return String.fromCharCode(bytesReadAndBuffer[1][0]);
-            });
-    };
+const tailData =function (input_file_path) {
+    const maxLineCount = 10;
+    const encoding = "utf8";
 
     return new Promise((resolve, reject) => {
-        let self = {
-            stat: null,
-            file: null,
-        };
+      let lines = [];
+      let lineCount = 0;
 
-        fs.exists(input_file_path)
-            .then((exists) => {
-                if (!exists) {
-                    throw new Error("file does not exist");
-                }
+      const rl = fs
+        .createReadStream(input_file_path, { encoding: encoding })
+        .on("data", (chunk) => {
+          let chunkLines = chunk.split(/\r?\n/).reverse(); // Reverse the chunk lines to read the last lines first
+          lines = [...chunkLines, ...lines]; // Concatenate the current chunk to the previous lines
+          lineCount += chunkLines.length;
 
-            }).then(() => {
-                let promises = [];
-
-                // Load file Stats.
-                promises.push(
-                    fs.stat(input_file_path)
-                        .then(stat => self.stat = stat));
-
-                // Open file for reading.
-                promises.push(
-                    fs.open(input_file_path, "r")
-                        .then(file => self.file = file));
-
-                return Promise.all(promises);
-            }).then(() => {
-                let chars = 0;
-                let lineCount = 0;
-                let lines = "";
-
-                const do_while_loop = function() {
-                    if (lines.length > self.stat.size) {
-                        lines = lines.substring(lines.length - self.stat.size);
-                    }
-
-                    if (lines.length >= self.stat.size || lineCount >= maxLineCount) {
-                        if (NEW_LINE_CHARACTERS.includes(lines.substring(0, 1))) {
-                            lines = lines.substring(1);
-                        }
-                        fs.close(self.file);
-                        if (encoding === "buffer") {
-                            return resolve(Buffer.from(lines, "binary"));
-                        }
-                        return resolve(Buffer.from(lines, "binary").toString(encoding));
-                    }
-
-                    return readPreviousChar(self.stat, self.file, chars)
-                        .then((nextCharacter) => {
-                            lines = nextCharacter + lines;
-                            if (NEW_LINE_CHARACTERS.includes(nextCharacter) && lines.length > 1) {
-                                lineCount++;
-                            }
-                            chars++;
-                        })
-                        .then(do_while_loop);
-                };
-                return do_while_loop();
-
-            }).catch((reason) => {
-                if (self.file !== null) {
-                    fs.close(self.file).catch(() => {
-                        // We might get here if the encoding is invalid.
-                        // Since we are already rejecting, let's ignore this error.
-                    });
-                }
-                return reject(reason);
-            });
+          if (lineCount > maxLineCount) {
+            lines = lines.slice(0, maxLineCount); // Keep only the last 10 lines
+            lineCount = maxLineCount;
+          }
+        })
+        .on("close", () => {
+          resolve(lines.join("\n"));
+        })
+        .on("error", (err) => {
+          reject(err);
+        });
     });
-};
+  };
