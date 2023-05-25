@@ -13,11 +13,6 @@
       const logList = document.getElementById('logList');
       const listItem = document.createElement('li');
       listItem.textContent = event.data;
-      const data = JSON.parse(event.data);
-        if (data.type === 'error') {
-            listItem.style.color = 'red';
-        }   
-        
       logList.appendChild(listItem);
     };
   </script>
